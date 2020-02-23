@@ -1,20 +1,26 @@
 import sys, pygame, math, json, time
 import numpy as np
+from functools import lru_cache
 # pygame is in x,y
 # point = [x, y]
 # Some global values
-SCREEN_SIZE = (500, 900)
+SCREEN_SIZE = (900, 900)
 BACKGROUND_COLOR = pygame.Color(255, 255, 255)
 TEXTURE_LEN = 32
 BLOCK_SIZE = 1
 MIN_DIST_FOR_EQUAL = 0.3
-MAX_RAY_ITERS = 20
+MAX_RAY_ITERS = 15
 DEFAULT_LOOK_ANGLE = 0
-DEFALT_LOOK_FOV_RADIUS = 80
+DEFALT_LOOK_FOV_RADIUS = 60
 LINES_PER_PIX = 6
 RAYS = SCREEN_SIZE[1]//LINES_PER_PIX
-
+PLAYER_HEIGHT = 1.5
+PLAYER_WIDTH = 0.5
+PLAYER_MOVESPEED = 0.2
+GRAV_ACC = -0.3
 textures = []
+MIN_YSPD = -0.5
+JUMP_SPEED = 1
 
 
 def parse_block_file(filename):
@@ -82,7 +88,8 @@ class Player:
         self.look_angle = DEFAULT_LOOK_ANGLE  # degrees
         self.look_dir = 'forward'  # 'back' or 'forward'
         self.fov_radius = DEFALT_LOOK_FOV_RADIUS
-
+        self.xspd = 0
+        self.yspd = 0
     def get_bottom_angle(self):
         return self.look_angle-self.fov_radius
 
@@ -95,6 +102,7 @@ class Block:
         bl = (top_left[0], top_left[1]-BLOCK_SIZE)
         tr = (top_left[0]+BLOCK_SIZE, top_left[1])
         br = (top_left[0]+BLOCK_SIZE, top_left[1]-BLOCK_SIZE)
+        self.top_left = top_left
         self.left_side = VBlockSide(top_left, bl, side_texture_index)
         self.right_side = VBlockSide(tr, br, side_texture_index)
         self.top_side = HBLockSide(top_left, tr, top_texture_index)
@@ -107,6 +115,9 @@ class Block:
                  self.bot_side]
         sides.sort(key=lambda a: a.dist_from_point(source_point))
         return sides[:2]
+
+    def point_inside(self, point):
+        return self.top_left[0] <= point[0] <= self.top_left[0]+BLOCK_SIZE and self.top_left[1]-BLOCK_SIZE <= point[1] <= self.top_left[1]
 
 
 class HBLockSide:
@@ -180,7 +191,7 @@ class VBlockSide:
         elif index < 0:
             index = 0
         return textures[self.texture_index][index]
-        
+
 
 def dist_between_points(p1, p2):
     return ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**(1/2)  # TODO
@@ -199,7 +210,7 @@ def find_closest_side(pos, sides):
             min_side = s
     return min_side, smallest_dist
     
-    
+
 def raycast_one(player, angle, sides, max_dist):
     """Finds the color for a single ray."""
     curr_point = player.pos
@@ -216,8 +227,8 @@ def raycast_one(player, angle, sides, max_dist):
                           curr_point[1] + math.sin(math.radians(angle))*distance)
         i += 1
     return BACKGROUND_COLOR
-       
-       
+
+
 def raycast(player, level):
     """Calculates the color of every pixel on the screen, using the player's head position and angle"""
     # 1 - grab all possible sides, and cull when possible
@@ -234,7 +245,7 @@ def raycast(player, level):
     for i in range(RAYS-1, 0, -1):
         # linspace spaces array between arg0 and arg2, with arg1 elements
         pix_color_list[i] = raycast_one(player, angs[i], sides, max_dist)
-    print('raycast time:', time.time()-t)
+    #print('raycast time:', time.time()-t)
     return pix_color_list
     
     
@@ -253,23 +264,78 @@ def render_line(screen, col, index):
     screen.fill(col, curr_line)
 
 
+def check_for_and_apply_collision_at(player, world):
+    """Changes speeds based on collisions. Doesnt actually move player"""
+    x_change = player.xspd
+    y_change = player.yspd
+    print(y_change)
+    if y_change < 0:
+        # check floor stuff
+        for block in world:
+            if block.point_inside((player.pos[0], player.pos[1] -PLAYER_HEIGHT + y_change)):
+                # Manually set players pos to land on floor
+                player.pos[1] = block.top_left[1]+PLAYER_HEIGHT
+                player.yspd = 0
+                break
+    elif y_change > 0:
+        # check ceil stuff
+        for block in world:
+            if block.point_inside((player.pos[0], player.pos[1]+y_change)):
+                # Manually set players pos to hit their head
+                player.pos[1] = block.top_left[1]-BLOCK_SIZE
+                player.yspd = 0
+                break
+    if x_change < 0:
+        check_p = (player.pos[0] + x_change, player.pos[1])
+        check_p_2 = (player.pos[0] + x_change, player.pos[1] - PLAYER_HEIGHT + 0.2)
+        for block in world:
+            if block.point_inside(check_p) or block.point_inside(check_p_2):
+                player.pos[0] = block.top_left[0]+BLOCK_SIZE
+                player.xspd = 0
+                break
+        # right stuff
+    elif x_change > 0:
+        # check left stuff
+        check_p = (player.pos[0] + x_change + PLAYER_WIDTH, player.pos[1])
+        check_p_2 = (player.pos[0] + x_change + PLAYER_WIDTH, player.pos[1] - PLAYER_HEIGHT + 0.2)
+        for block in world:
+            if block.point_inside(check_p) or block.point_inside(check_p_2):
+                player.pos[0] = block.top_left[0]-PLAYER_WIDTH
+                player.xspd = 0
+                break
+
+
+def update_pys(player, world, dt):
+    player.xspd = pygame.key.get_pressed()[pygame.K_UP]*PLAYER_MOVESPEED*dt - pygame.key.get_pressed()[pygame.K_DOWN]*PLAYER_MOVESPEED*dt
+    update_yspeed_vals(player, dt)
+    check_for_and_apply_collision_at(player, world)
+    update_player_pos(player)
+
+
+def update_yspeed_vals(player, dt):
+    player.yspd += GRAV_ACC*dt
+    if player.yspd < MIN_YSPD:
+        player.yspd = MIN_YSPD
+
+
+def update_player_pos(player):
+    player.pos[0] += player.xspd
+    player.pos[1] += player.yspd
+
+
 def mainloop(screen, player, world):
     """Main game execution loop. Grabs player input, calculates movement, updates position, and draws to screen"""
-    speed = 0.2 # blocks per s
-    look_speed = 0.1
-    index = 0
+    look_speed = 0.2
     clock = pygame.time.Clock()
-    col_list_master = raycast(player, world)
     while 1:
         # basic script to close out if window closed
         dt = clock.tick()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
-        if pygame.key.get_pressed()[pygame.K_UP]:
-            player.pos[0] += speed*dt/100
-        elif pygame.key.get_pressed()[pygame.K_DOWN]:
-            player.pos[0] -= speed*dt/100
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and player.yspd == 0:
+                player.yspd = JUMP_SPEED
+        update_pys(player, world, dt/100)
         if pygame.key.get_pressed()[pygame.K_w]:
             player.look_angle += look_speed*dt
         elif pygame.key.get_pressed()[pygame.K_s]:
@@ -278,6 +344,8 @@ def mainloop(screen, player, world):
             player.look_angle = 90
         elif player.look_angle < -120:
             player.look_angle = -120
+
+
 
         # phys stuff here
         col_list = raycast(player, world)

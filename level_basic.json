@@ -1,6 +1,6 @@
 {
 	"Level" : "Basic",
-	"StartingPos" : [0,2],
+	"StartingPos" : [0,30],
 	"Blocks" : [[0,0,"Grass"],
 				[1,0,"Grass"],
 				[2,0,"Grass"],
@@ -26,7 +26,7 @@
 				[18,0,"Grass"],
 				[18,-1,"Dirt"],
 				[19,0,"Grass"],
-				[3,4,"Brick"],
+				[3,6,"Brick"],
 				[10,5,"Brick"],
 				[14,2,"Alien"]
 				
