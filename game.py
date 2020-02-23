@@ -4,10 +4,13 @@ import numpy as np
 # point = [x, y]
 # Some global values
 SCREEN_SIZE = (300, 800)
-BACKGROUND_COLOR = (0, 0, 0)
-BLOCK_SIZE = (1, 1)
-MIN_DIST = 0.001
+BACKGROUND_COLOR = pygame.Color(255, 255, 255)
+TEXTURE_LEN = 32
+BLOCK_SIZE = 1
+MIN_DIST_FOR_EQUAL = 0.001
 MAX_RAY_ITERS = 50
+DEFAULT_LOOK_ANGLE = 0
+DEFALT_LOOK_FOV_RADIUS = 60
 
 
 def parse_block_file(filename):
@@ -23,7 +26,8 @@ def parse_block_file(filename):
 def hexes_to_colors(hexes):
     cols = []
     for h in hexes:
-        cols.append(pygame.Color('0x'+lower(h)))
+        cols.append(pygame.Color('0x'+h.lower()))
+    return cols
 
 
 def parse_block_files(block_filenames):
@@ -32,6 +36,7 @@ def parse_block_files(block_filenames):
     for b in block_filenames:
         newdef = parse_block_file(b)
         block_defs[newdef.name] = newdef
+
     return block_defs
 
 
@@ -54,7 +59,7 @@ class BlockDef:
         self.bot_texture = bot_texture
         
     def make_one(self, loc):
-        return Block(loc, self.top_texture, self.texture_side, self.texture_bottom)
+        return Block(loc, self.top_texture, self.side_texture, self.bot_texture)
 
 
 class Player:
@@ -66,14 +71,20 @@ class Player:
     
     def __init__(self, starting_pos):
         self.pos = starting_pos  # x, y 
-        self.look_angle = 0  # degrees
+        self.look_angle = DEFAULT_LOOK_ANGLE  # degrees
         self.look_dir = 'forward'  # 'back' or 'forward'
-        self.fov_angle = 60
+        self.fov_radius = DEFALT_LOOK_FOV_RADIUS
+
+    def get_bottom_angle(self):
+        return self.look_angle-self.fov_radius
+
+    def get_top_angle(self):
+        return self.look_angle + self.fov_radius
 
 
 class Block:
     def __init__(self, top_left, texture_top, texture_side, texture_bottom):
-        assert BLOCK_SIZE == len(texture_top) == len(texture_side) == len(texture_bottom) 
+        assert TEXTURE_LEN == len(texture_top) == len(texture_side) == len(texture_bottom)
         bl = (top_left[0], top_left[1]-BLOCK_SIZE)
         tr = (top_left[0]+BLOCK_SIZE, top_left[1])
         br = (top_left[0]+BLOCK_SIZE, top_left[1]-BLOCK_SIZE)
@@ -83,28 +94,28 @@ class Block:
         self.bot_side = HBLockSide(bl, br, texture_top)
         
     def get_two_closest_sides(self, source_point):
-        dists = [self.left_side.dist_from_point(source_point),
-                 self.right_side.dist_from_point(source_point),
-                 self.top_side.dist_from_point(source_point),
-                 self.bot_side.dist_from_point(source_point)]
-        dists.sort()
-        return dists[:2]
+        sides = [self.left_side,
+                 self.right_side,
+                 self.top_side,
+                 self.bot_side]
+        sides.sort(key=lambda a: a.dist_from_point(source_point))
+        return sides[:2]
 
 
 class HBLockSide:
     def __init__(self, left, right, texture):
-        assert len(texture) == BLOCK_SIZE
+        assert len(texture) == TEXTURE_LEN
         self.left = left
         self.right = right
         self.texture = texture
         
     def dist_from_point(self, point):
         if point[0] > self.right[0]: 
-            return dist_between_points(point, self.top)
+            return dist_between_points(point, self.right)
         elif point[0] < self.left[0]:
-            return dist_between_points(point, self.bot)
+            return dist_between_points(point, self.left)
         else:  # point y between top and bot ys
-            return abs(point[1]-self.top[1])
+            return abs(point[1]-self.left[1])
           
     def adjacent_to(self, other):
         if not isinstance(other, HBLockSide) or self is other:
@@ -120,13 +131,13 @@ class HBLockSide:
         # ------* l1
         # ------*------------- BLOCK_SIZE
         #       ^ index
-        index = int(l1*BLOCK_SIZE/l2)  # floored since 0 is start
+        index = int(l1*TEXTURE_LEN/l2)  # floored since 0 is start
         return self.texture[index]
     
     
 class VBlockSide:
     def __init__(self, top, bot, texture):
-        assert len(texture) == BLOCK_SIZE
+        assert len(texture) == TEXTURE_LEN
         self.top = top
         self.bot = bot
         self.texture = texture
@@ -142,8 +153,8 @@ class VBlockSide:
     def adjacent_to(self, other):
         if not isinstance(other, VBlockSide) or self is other:
             return False
-        if dist_between_points(self.left, other.left) < MIN_DIST:
-            if dist_between_points(self.right, other.rught) < MIN_DIST:
+        if dist_between_points(self.left, other.left) < MIN_DIST_FOR_EQUAL:
+            if dist_between_points(self.right, other.rught) < MIN_DIST_FOR_EQUAL:
                 return True
         return False
         
@@ -153,7 +164,7 @@ class VBlockSide:
         # ------* l1
         # ------*------------- BLOCK_SIZE
         #       ^ index
-        index = int(l1*BLOCK_SIZE/l2)  # floored since 0 is start
+        index = int(l1*TEXTURE_LEN/l2)  # floored since 0 is start
         return self.texture[index]
         
 
@@ -166,23 +177,24 @@ def find_closest_side(pos, sides):
     min_side = None
     for s in sides:
         d = s.dist_from_point(pos)
-        if d < MIN_DIST:
+        if d < MIN_DIST_FOR_EQUAL:
             # we found a side the point is right on top of, so this must be the one!
             return s, 0
         if d < smallest_dist:
             smallest_dist = d
             min_side = s
-    return min_side, distance
+    return min_side, smallest_dist
     
     
 def raycast_one(player, angle, sides):
     """Finds the color for a single ray."""
     curr_point = player.pos
     i = 0
-    closest, distance = find_closest_side(curr_point, sides)
+
     while i < MAX_RAY_ITERS:
+        closest_side, distance = find_closest_side(curr_point, sides)
         if distance == 0:
-            return side.find_color_from_point(player.pos)
+            return closest_side.find_color_from_point(curr_point)
         else:
             curr_point = (curr_point[0] + math.cos(math.radians(angle))*distance,
                           curr_point[1] + math.sin(math.radians(angle))*distance)
@@ -200,9 +212,10 @@ def raycast(player, level):
     # TODO
     # 3 - find color for each point
     pix_color_list = []
-    for ang in np.linspace(player.look_angle, SCREEN_SIZE[1], player.fov_angle):
+    for ang in np.linspace(player.get_bottom_angle(), player.get_top_angle(), SCREEN_SIZE[1]):
         # linspace spaces array between arg0 and arg2, with arg1 elements
         pix_color_list.append(raycast_one(player, ang, sides))
+    pix_color_list.reverse()
     return pix_color_list
     
     
