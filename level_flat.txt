@@ -1,0 +1,16 @@
+{
+	"Blocks" : [[0,0,"grass"],
+				[0,1,"grass"],
+				[0,2,"grass"],
+				[0,3,"grass"],
+				[0,4,"grass"],
+				[0,5,"grass"],
+				[0,6,"grass"],
+				[0,7,"grass"],
+				[0,8,"grass"],
+				[0,9,"grass"],
+				[0,10,"grass"]
+			   ]
+
+
+}
