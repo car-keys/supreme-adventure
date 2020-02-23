@@ -1,17 +1,60 @@
-import sys, pygame
+import sys, pygame, math, json
 import numpy as np
 # pygame is in x,y
 # point = [x, y]
 # Some global values
-SCREEN_SIZE = 800, 800
+SCREEN_SIZE = (300, 800)
 BACKGROUND_COLOR = (0, 0, 0)
-BLOCK_SIZE = 1, 1
+BLOCK_SIZE = (1, 1)
 MIN_DIST = 0.001
 MAX_RAY_ITERS = 50
 
 
-def import_level(filename):
-    return level
+def parse_block_file(filename):
+    print(f'parsing {filename}')
+    with open(filename) as f:
+        data = json.load(f)
+    return BlockDef(data['Name'],
+                    hexes_to_colors(data['Top']),
+                    hexes_to_colors(data['Bottom']),
+                    hexes_to_colors(data['Side']))
+
+
+def hexes_to_colors(hexes):
+    cols = []
+    for h in hexes:
+        cols.append(pygame.Color('0x'+lower(h)))
+
+
+def parse_block_files(block_filenames):
+    block_defs = {}
+    
+    for b in block_filenames:
+        newdef = parse_block_file(b)
+        block_defs[newdef.name] = newdef
+    return block_defs
+
+
+def parse_level(filename, block_defs):
+    level = []
+    with open(filename) as f:
+        data = json.load(f)
+        for b in data["Blocks"]:
+            level.append(block_defs[b[2]].make_one((b[0], b[1])))
+    player = Player(list(data["StartingPos"]))
+    return level, player
+
+
+class BlockDef:
+    """Yes, i know this is bad code"""
+    def __init__(self, name, top_texture, bot_texture, side_texture):
+        self.name = name
+        self.top_texture = top_texture
+        self.side_texture = side_texture
+        self.bot_texture = bot_texture
+        
+    def make_one(self, loc):
+        return Block(loc, self.top_texture, self.texture_side, self.texture_bottom)
 
 
 class Player:
@@ -25,20 +68,21 @@ class Player:
         self.pos = starting_pos  # x, y 
         self.look_angle = 0  # degrees
         self.look_dir = 'forward'  # 'back' or 'forward'
+        self.fov_angle = 60
 
 
 class Block:
     def __init__(self, top_left, texture_top, texture_side, texture_bottom):
         assert BLOCK_SIZE == len(texture_top) == len(texture_side) == len(texture_bottom) 
-        bl = (top_left[0], top_left[1]+BLOCK_SIZE)
+        bl = (top_left[0], top_left[1]-BLOCK_SIZE)
         tr = (top_left[0]+BLOCK_SIZE, top_left[1])
-        br = (top_left[0]+BLOCK_SIZE, top_left[1]+BLOCK_SIZE)
-        self.left_side = VBlockSide(top_left, bl)
-        self.right_side = VBlockSide(tr, br)
-        self.top_side = HBLockSide(top_left, tr)
-        self.bot_side = HBLockSide(bl, br)
+        br = (top_left[0]+BLOCK_SIZE, top_left[1]-BLOCK_SIZE)
+        self.left_side = VBlockSide(top_left, bl, texture_side)
+        self.right_side = VBlockSide(tr, br, texture_side)
+        self.top_side = HBLockSide(top_left, tr, texture_top)
+        self.bot_side = HBLockSide(bl, br, texture_top)
         
-    def get_two_closest_sides(source_point):
+    def get_two_closest_sides(self, source_point):
         dists = [self.left_side.dist_from_point(source_point),
                  self.right_side.dist_from_point(source_point),
                  self.top_side.dist_from_point(source_point),
@@ -87,7 +131,7 @@ class VBlockSide:
         self.bot = bot
         self.texture = texture
         
-    def dist_from_point(point):
+    def dist_from_point(self, point):
         if point[1] > self.top[1]: 
             return dist_between_points(point, self.top)
         elif point[1] < self.bot[1]:
@@ -117,24 +161,16 @@ def dist_between_points(p1, p2):
     return ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)**(1/2)  # TODO
     
     
-def update_player_pos(player, world, delta_x, delta_y):
-    pass  # TODO
-    
-    
-def check_colision_at(newpos, world):
-    pass  # TODO
-    
-    
 def find_closest_side(pos, sides):
-    min_dist = 1000000000
+    smallest_dist = 1000000000
     min_side = None
     for s in sides:
-        d = s.dist_from_point(player.pos)
+        d = s.dist_from_point(pos)
         if d < MIN_DIST:
             # we found a side the point is right on top of, so this must be the one!
             return s, 0
-        if d < min_dist:
-            min_dist = d
+        if d < smallest_dist:
+            smallest_dist = d
             min_side = s
     return min_side, distance
     
@@ -143,13 +179,13 @@ def raycast_one(player, angle, sides):
     """Finds the color for a single ray."""
     curr_point = player.pos
     i = 0
-    closest, distance = find_closest_side(player.pos, sides)
-    while i < MAX_RAY_ITERS
+    closest, distance = find_closest_side(curr_point, sides)
+    while i < MAX_RAY_ITERS:
         if distance == 0:
             return side.find_color_from_point(player.pos)
         else:
-            curr_point = (curr_point[0] + math.cos(angle)*distance
-                          curr_point[1] + math.sin(angle)*distance)
+            curr_point = (curr_point[0] + math.cos(math.radians(angle))*distance,
+                          curr_point[1] + math.sin(math.radians(angle))*distance)
         i += 1
     return BACKGROUND_COLOR
        
@@ -164,10 +200,9 @@ def raycast(player, level):
     # TODO
     # 3 - find color for each point
     pix_color_list = []
-    angles = 
     for ang in np.linspace(player.look_angle, SCREEN_SIZE[1], player.fov_angle):
         # linspace spaces array between arg0 and arg2, with arg1 elements
-        pix_color_list.append(raycast_one(player, angle, sides))
+        pix_color_list.append(raycast_one(player, ang, sides))
     return pix_color_list
     
     
@@ -188,10 +223,11 @@ def mainloop(screen, player, world):
     while 1:
         # basic script to close out if window closed
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: sys.exit()
+            if event.type == pygame.QUIT:
+                sys.exit()
 
         # phys stuff here
-        col_list = raycast(player, level)
+        col_list = raycast(player, world)
         render(screen, col_list)
         index += 1
 
@@ -200,7 +236,10 @@ def main():
     """Starting point for execution"""
     pygame.init()
     screen = pygame.display.set_mode(SCREEN_SIZE)
-    mainloop(screen, None, None)
+
+    block_defs = parse_block_files(["Grass.json", "Dirt.json"])
+    level, player = parse_level('level_flat.json', block_defs)
+    mainloop(screen, player, level)
     # setup player, world, etc
 
 

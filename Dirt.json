@@ -1,8 +1,6 @@
-
 {
-	"name" : "Dirt",
-	
-	"bottom" : [A67A39,
+	"Name" : "Dirt",
+	"Bottom" : [A67A39,
 				D69F4B,
 				BA8A41,
 				BA8A41,
@@ -35,7 +33,7 @@
 				A67A39,
 				BA8A41
 				],
-				
+
 	"Top" 	:  [A67A39,
 				D69F4B,
 				BA8A41,
@@ -102,8 +100,5 @@
 				D69F4B,
 				A67A39,
 				BA8A41
-				]
-				
-				
-				
+				]		
 }

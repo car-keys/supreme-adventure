@@ -1,6 +1,6 @@
 {
-	"level" : "basic",
-	
+	"Level" : "basic",
+	"StartingPos" : [0,3],
 	"Blocks" : [[0,0,"grass"],
 				[1,0,"grass"],
 				[2,0,"grass"],

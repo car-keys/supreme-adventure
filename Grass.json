@@ -1,8 +1,6 @@
-
 {
-	"name" : "Grass",
-	
-	"bottom" : [A67A39,
+	"Name" : "Grass",
+	"Bottom" : [A67A39,
 				D69F4B,
 				BA8A41,
 				BA8A41,
@@ -35,7 +33,6 @@
 				A67A39,
 				BA8A41
 				],
-				
 	"Top" 	:  [0FBA20,
 				14FF2C,
 				11D625,
@@ -68,8 +65,7 @@
 				14FF2C,
 				0FBA20,
 				11D625
-				]
-				
+				],
 	"Side"	:  [11D625,
 				0FBA20,
 				11D625,
@@ -103,7 +99,4 @@
 				D69F4B,
 				BA8A41
 				]
-				
-				
-				
 }
