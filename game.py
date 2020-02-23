@@ -16,12 +16,12 @@ LINES_PER_PIX = 6
 RAYS = SCREEN_SIZE[1]//LINES_PER_PIX
 PLAYER_HEIGHT = 1.5
 PLAYER_WIDTH = 0.5
-PLAYER_MOVESPEED = 0.2
+PLAYER_MOVESPEED = 0.4
 GRAV_ACC = -0.3
 textures = []
 MIN_YSPD = -0.5
-JUMP_SPEED = 1
-
+JUMP_SPEED = 1.2
+RENDER_DIST = 15
 
 def parse_block_file(filename):
     print(f'parsing {filename}')
@@ -235,7 +235,8 @@ def raycast(player, level):
     sides = []
 
     for block in level:
-        sides += block.get_two_closest_sides(player.pos)
+        if dist_between_points(block.top_left, player.pos) < RENDER_DIST:
+            sides += block.get_two_closest_sides(player.pos)
     # 2 - cull adjacent sides, since they must be internal
     max_dist = max([s.dist_from_point(player.pos) for s in sides])
     # 3 - find color for each point
@@ -345,15 +346,7 @@ def mainloop(screen, player, world):
         elif player.look_angle < -120:
             player.look_angle = -120
 
-
-
-        # phys stuff here
         col_list = raycast(player, world)
-        #for i in range(len(col_list)):
-        #    if not np.equal(col_list[i], col_list_master[i]).all():
-        #        col_list_master[i] = col_list[i]
-        #        render_line(screen, col_list_master[i], i)
-        #pygame.display.flip()
         render(screen, col_list[::-1])
 
 
