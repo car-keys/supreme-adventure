@@ -1,4 +1,6 @@
 {
+	"level" : "flat",
+	
 	"Blocks" : [[0,3,"grass"],
 				[1,3,"grass"],
 				[2,3,"grass"],
